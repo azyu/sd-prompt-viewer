@@ -271,168 +271,18 @@ function resetUI() {
 }
 
 function handleComfyUI(tags) {
-    let promptJson = null;
-    let workflowJson = null;
+    const result = window.comfyParser.parseComfyTags(tags);
 
-    try {
-        if (tags['prompt']) {
-            promptJson = JSON.parse(tags['prompt'].description);
-        }
-        if (tags['workflow']) {
-            workflowJson = JSON.parse(tags['workflow'].description);
-        }
-    } catch (e) {
-        console.error("Failed to parse ComfyUI JSON", e);
-    }
+    rawDataArea.value = result.rawData;
+    currentPromptData = result.promptData;
 
-    // Display Raw Data
-    rawDataArea.value = JSON.stringify(workflowJson || promptJson, null, 2);
-
-    // Separated Storage
-    let posRendered = new Set();
-    let posSource = new Set();
-    let negRendered = new Set();
-    let negSource = new Set();
-
-    let seed = 'Unknown';
-    let steps = 'Unknown';
-    let cfg = 'Unknown';
-    let sampler = 'Unknown';
-    let model = 'Unknown';
-
-    if (promptJson) {
-        const nodes = promptJson;
-
-        // Helper: Recursive Trace
-        const collectText = (inputVal, targetRendered, targetSource, direction, visited = new Set(), depth = 0) => {
-            if (!Array.isArray(inputVal)) return;
-            const linkNodeId = inputVal[0];
-
-            if (visited.has(linkNodeId)) return;
-            visited.add(linkNodeId);
-
-            const linkNode = nodes[linkNodeId];
-            if (!linkNode) return;
-
-            const type = linkNode.class_type;
-
-            // 1. Text Node Candidates
-            const textNodeTypes = [
-                'CLIPTextEncode', 'CLIPTextEncodeSDXL', 'ShowText', 'PrimitiveNode',
-                'ImpactWildcardProcessor', 'ImpactWildcardEncode', 'WildcardEncode'
-            ];
-
-            const isTextNode = textNodeTypes.includes(type) || type.includes('TextEncode') || type.includes('WildcardProcessor');
-
-            if (isTextNode) {
-                // Check Populated (Rendered)
-                const popText = linkNode.inputs.populated_text;
-                if (popText && typeof popText === 'string' && popText.trim()) {
-                    targetRendered.add(popText.trim());
-                }
-
-                // Check Source (Template)
-                // If populated_text exists, we want 'text'/'wildcard_text' to go to Source Set.
-                // If NO populated_text, then 'text' goes to BOTH (as it is effectively both source and result).
-
-                const sourceInputs = [
-                    linkNode.inputs.text,
-                    linkNode.inputs.text_g,
-                    linkNode.inputs.text_l,
-                    linkNode.inputs.string_field,
-                    linkNode.inputs.prompt,
-                    linkNode.inputs.wildcard,
-                    linkNode.inputs.wildcard_text
-                ];
-
-                let hasSource = false;
-                sourceInputs.forEach(t => {
-                    if (t && typeof t === 'string' && t.trim()) {
-                        targetSource.add(t.trim());
-                        if (!popText) targetRendered.add(t.trim()); // If no specific result, source is result
-                        hasSource = true;
-                    }
-                });
-
-                if (hasSource || popText) return; // Stop tracing if we found content
-
-                // Check for Linked Text Inputs (e.g. Primitive->CLIPTextEncode)
-                const linkedLabels = ['text', 'text_g', 'text_l', 'wildcard_text', 'wildcard', 'populated_text', 'prompt'];
-                let linkedFound = false;
-                linkedLabels.forEach(label => {
-                    if (Array.isArray(linkNode.inputs[label])) {
-                        collectText(linkNode.inputs[label], targetRendered, targetSource, direction, visited, depth + 1);
-                        linkedFound = true;
-                    }
-                });
-                if (linkedFound) return;
-            }
-
-            // 2. Traversal inputs
-            let nextInputs = ['conditioning', 'conditioning_1', 'conditioning_2', 'conditioning_from', 'conditioning_to', 'source'];
-
-            if (direction === 'positive') nextInputs.push('positive', 'a', 'base_ctx', 'refiner_ctx', 'refiner_positive', 'clip');
-            if (direction === 'negative') nextInputs.push('negative', 'b', 'refiner_negative', 'clip');
-
-            nextInputs.push('bus', 'pipe', 'basic_pipe');
-
-            let continued = false;
-            nextInputs.forEach(key => {
-                if (linkNode.inputs[key]) {
-                    continued = true;
-                    collectText(linkNode.inputs[key], targetRendered, targetSource, direction, visited, depth + 1);
-                }
-            });
-
-            if (!continued) {
-                // Check ALL inputs for Reroute/Note
-                if (type === 'Reroute' || type === 'Note' || type.includes('Reroute')) {
-                    Object.values(linkNode.inputs).forEach(val => collectText(val, targetRendered, targetSource, direction, visited, depth + 1));
-                    continued = true;
-                }
-            }
-        };
-
-        // 1. Find KSamplers
-        Object.values(nodes).forEach(node => {
-            if (node.class_type.includes('KSampler')) {
-                // Attributes
-                if (node.inputs.seed) seed = node.inputs.seed;
-                if (node.inputs.steps) steps = node.inputs.steps;
-                if (node.inputs.cfg) cfg = node.inputs.cfg;
-                if (node.inputs.sampler_name) sampler = node.inputs.sampler_name;
-
-                // Trace Prompts
-                if (node.inputs.positive) {
-                    collectText(node.inputs.positive, posRendered, posSource, 'positive');
-                }
-                if (node.inputs.negative) {
-                    collectText(node.inputs.negative, negRendered, negSource, 'negative');
-                }
-            }
-
-            if (node.class_type === 'CheckpointLoaderSimple' || node.class_type === 'CheckpointLoader') {
-                if (node.inputs.ckpt_name) model = node.inputs.ckpt_name;
-            }
-        });
-    }
-
-    // Update State
-    currentPromptData.positive.rendered = Array.from(posRendered).join('\n\n') || "No Positive Prompt Found";
-    currentPromptData.positive.source = Array.from(posSource).join('\n\n') || "No Source Prompt Found";
-
-    currentPromptData.negative.rendered = Array.from(negRendered).join('\n\n');
-    currentPromptData.negative.source = Array.from(negSource).join('\n\n');
-
-    // Render Initial View
     updatePromptDisplay(promptModeSelector.value);
 
-    // Attributes
-    if (seed !== 'Unknown') createAttributeTag('Seed', seed);
-    if (steps !== 'Unknown') createAttributeTag('Steps', steps);
-    if (cfg !== 'Unknown') createAttributeTag('CFG', cfg);
-    if (sampler !== 'Unknown') createAttributeTag('Sampler', sampler);
-    if (model !== 'Unknown') createAttributeTag('Model', model);
+    if (result.attributes.seed !== 'Unknown') createAttributeTag('Seed', result.attributes.seed);
+    if (result.attributes.steps !== 'Unknown') createAttributeTag('Steps', result.attributes.steps);
+    if (result.attributes.cfg !== 'Unknown') createAttributeTag('CFG', result.attributes.cfg);
+    if (result.attributes.sampler !== 'Unknown') createAttributeTag('Sampler', result.attributes.sampler);
+    if (result.attributes.model !== 'Unknown') createAttributeTag('Model', result.attributes.model);
 
     createAttributeTag('Generator', 'ComfyUI');
 }
