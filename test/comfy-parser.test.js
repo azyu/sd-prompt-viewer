@@ -98,6 +98,55 @@ test('extracts positive prompt text from linked custom string nodes', () => {
     assert.equal(result.attributes.model, 'novaAnimeXL_ilV170.safetensors');
 });
 
+test('ignores helper node text fields and continues to the linked prompt source', () => {
+    const tags = {
+        prompt: {
+            description: JSON.stringify({
+                3: {
+                    inputs: {
+                        seed: 99,
+                        steps: 28,
+                        cfg: 5.5,
+                        sampler_name: 'dpmpp_2m',
+                        model: ['4', 0],
+                        positive: ['8', 0],
+                        negative: ['7', 0]
+                    },
+                    class_type: 'KSampler'
+                },
+                4: {
+                    inputs: { ckpt_name: 'model.safetensors' },
+                    class_type: 'CheckpointLoaderSimple'
+                },
+                6: {
+                    inputs: { text: ['27', 0], clip: ['4', 1] },
+                    class_type: 'CLIPTextEncode'
+                },
+                7: {
+                    inputs: { text: 'negative prompt', clip: ['4', 1] },
+                    class_type: 'CLIPTextEncode'
+                },
+                8: {
+                    inputs: {
+                        text: 'helper label that is not the prompt',
+                        conditioning: ['6', 0]
+                    },
+                    class_type: 'ConditioningHelper'
+                },
+                27: {
+                    inputs: { text: 'actual prompt text' },
+                    class_type: 'DPRandomGenerator'
+                }
+            })
+        }
+    };
+
+    const result = parseComfyTags(tags);
+
+    assert.equal(result.promptData.positive.rendered, 'actual prompt text');
+    assert.equal(result.promptData.positive.source, 'actual prompt text');
+});
+
 test('parses prompt tags that include NaN in ComfyUI metadata', () => {
     const tags = {
         prompt: {

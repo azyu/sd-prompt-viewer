@@ -75,53 +75,32 @@
             const nodes = promptJson;
 
             const collectText = (inputVal, targetRendered, targetSource, direction, visited = new Set()) => {
-                if (!Array.isArray(inputVal)) return;
+                if (!Array.isArray(inputVal)) return false;
 
                 const linkNodeId = String(inputVal[0]);
-                if (visited.has(linkNodeId)) return;
+                if (visited.has(linkNodeId)) return false;
                 visited.add(linkNodeId);
 
                 const linkNode = nodes[linkNodeId];
-                if (!linkNode || !linkNode.inputs) return;
+                if (!linkNode || !linkNode.inputs) return false;
 
                 const populatedText = linkNode.inputs.populated_text;
-                if (typeof populatedText === 'string' && populatedText.trim()) {
+                const hasPopulatedText = typeof populatedText === 'string' && populatedText.trim();
+                let foundText = false;
+
+                if (hasPopulatedText) {
                     targetRendered.add(populatedText.trim());
+                    foundText = true;
                 }
 
-                // Some custom nodes output prompt text without using CLIPTextEncode.
-                const sourceInputs = [
-                    linkNode.inputs.text,
-                    linkNode.inputs.text_g,
-                    linkNode.inputs.text_l,
-                    linkNode.inputs.string_field,
-                    linkNode.inputs.prompt,
-                    linkNode.inputs.wildcard,
-                    linkNode.inputs.wildcard_text
-                ];
-
-                let hasSource = false;
-                sourceInputs.forEach((value) => {
-                    if (typeof value === 'string' && value.trim()) {
-                        targetSource.add(value.trim());
-                        if (!(typeof populatedText === 'string' && populatedText.trim())) {
-                            targetRendered.add(value.trim());
-                        }
-                        hasSource = true;
-                    }
-                });
-
-                if (hasSource || (typeof populatedText === 'string' && populatedText.trim())) return;
-
                 const linkedLabels = ['text', 'text_g', 'text_l', 'wildcard_text', 'wildcard', 'populated_text', 'prompt'];
-                let linkedFound = false;
                 linkedLabels.forEach((label) => {
                     if (Array.isArray(linkNode.inputs[label])) {
-                        collectText(linkNode.inputs[label], targetRendered, targetSource, direction, visited);
-                        linkedFound = true;
+                        if (collectText(linkNode.inputs[label], targetRendered, targetSource, direction, visited)) {
+                            foundText = true;
+                        }
                     }
                 });
-                if (linkedFound) return;
 
                 let nextInputs = ['conditioning', 'conditioning_1', 'conditioning_2', 'conditioning_from', 'conditioning_to', 'source'];
 
@@ -134,7 +113,9 @@
                 nextInputs.forEach((key) => {
                     if (linkNode.inputs[key]) {
                         continued = true;
-                        collectText(linkNode.inputs[key], targetRendered, targetSource, direction, visited);
+                        if (collectText(linkNode.inputs[key], targetRendered, targetSource, direction, visited)) {
+                            foundText = true;
+                        }
                     }
                 });
 
@@ -142,10 +123,37 @@
                     const type = linkNode.class_type || '';
                     if (type === 'Reroute' || type === 'Note' || type.includes('Reroute')) {
                         Object.values(linkNode.inputs).forEach((value) => {
-                            collectText(value, targetRendered, targetSource, direction, visited);
+                            if (collectText(value, targetRendered, targetSource, direction, visited)) {
+                                foundText = true;
+                            }
                         });
                     }
                 }
+
+                if (foundText) return true;
+
+                // Some custom nodes output prompt text without using CLIPTextEncode.
+                const sourceInputs = [
+                    linkNode.inputs.text,
+                    linkNode.inputs.text_g,
+                    linkNode.inputs.text_l,
+                    linkNode.inputs.string_field,
+                    linkNode.inputs.prompt,
+                    linkNode.inputs.wildcard,
+                    linkNode.inputs.wildcard_text
+                ];
+
+                sourceInputs.forEach((value) => {
+                    if (typeof value === 'string' && value.trim()) {
+                        targetSource.add(value.trim());
+                        if (!hasPopulatedText) {
+                            targetRendered.add(value.trim());
+                        }
+                        foundText = true;
+                    }
+                });
+
+                return foundText;
             };
 
             Object.values(nodes).forEach((node) => {
