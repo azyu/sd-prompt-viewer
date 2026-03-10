@@ -1,5 +1,6 @@
 const { contextBridge } = require('electron');
 const ExifReader = require('exifreader');
+const { parseComfyTags } = require('./comfy-parser');
 
 contextBridge.exposeInMainWorld('electronAPI', {
     parseMetadata: async (arrayBuffer) => {
@@ -11,5 +12,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
             console.error('Metadata parsing error:', e);
             return null;
         }
-    }
+    },
+    parseComfyTags: (tags) => parseComfyTags(tags)
 });
