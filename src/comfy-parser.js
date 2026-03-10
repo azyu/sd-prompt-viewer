@@ -7,10 +7,20 @@
 
     root.comfyParser = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, () => {
+    const dynamicPromptNodePatterns = [
+        /random/i,
+        /wildcard/i
+    ];
+
     function isDynamicPromptTemplate(text) {
         if (typeof text !== 'string') return false;
 
         return /\{[^{}\n]*\|[^{}\n]*\}/.test(text) || /__[^_\n]+__/.test(text);
+    }
+
+    function isDynamicPromptNode(node) {
+        const classType = (node && node.class_type) || '';
+        return dynamicPromptNodePatterns.some((pattern) => pattern.test(classType));
     }
 
     function joinPromptValues(values, emptyText) {
@@ -156,7 +166,7 @@
                 sourceInputs.forEach((value) => {
                     if (typeof value === 'string' && value.trim()) {
                         const sourceText = value.trim();
-                        const isTemplateOnlyNode = isDynamicPromptTemplate(sourceText);
+                        const isTemplateOnlyNode = isDynamicPromptNode(linkNode) && isDynamicPromptTemplate(sourceText);
 
                         targetSource.add(sourceText);
                         if (!hasPopulatedText && !isTemplateOnlyNode) {

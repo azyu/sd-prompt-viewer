@@ -145,6 +145,50 @@ test('does not pretend rendered prompt exists when metadata only stores a dynami
     assert.notEqual(result.promptData.positive.rendered, result.promptData.positive.source);
 });
 
+test('keeps rendered prompt text for non-dynamic nodes even when the text contains template-like tokens', () => {
+    const tags = {
+        prompt: {
+            description: JSON.stringify({
+                3: {
+                    inputs: {
+                        seed: 12,
+                        steps: 20,
+                        cfg: 6,
+                        sampler_name: 'euler',
+                        model: ['4', 0],
+                        positive: ['6', 0],
+                        negative: ['7', 0]
+                    },
+                    class_type: 'KSampler'
+                },
+                4: {
+                    inputs: { ckpt_name: 'model.safetensors' },
+                    class_type: 'CheckpointLoaderSimple'
+                },
+                6: {
+                    inputs: { text: ['27', 0], clip: ['4', 1] },
+                    class_type: 'CLIPTextEncode'
+                },
+                7: {
+                    inputs: { text: 'negative prompt', clip: ['4', 1] },
+                    class_type: 'CLIPTextEncode'
+                },
+                27: {
+                    inputs: {
+                        text: 'literal prompt with {a|b} and __tag__ tokens'
+                    },
+                    class_type: 'StringNode'
+                }
+            })
+        }
+    };
+
+    const result = parseComfyTags(tags);
+
+    assert.equal(result.promptData.positive.rendered, 'literal prompt with {a|b} and __tag__ tokens');
+    assert.equal(result.promptData.positive.source, 'literal prompt with {a|b} and __tag__ tokens');
+});
+
 test('ignores helper node text fields and continues to the linked prompt source', () => {
     const tags = {
         prompt: {
