@@ -7,6 +7,26 @@
 
     root.comfyParser = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, () => {
+    const dynamicPromptNodePatterns = [
+        /random/i,
+        /wildcard/i
+    ];
+
+    function isDynamicPromptTemplate(text) {
+        if (typeof text !== 'string') return false;
+
+        return /\{[^{}\n]*\|[^{}\n]*\}/.test(text) || /__[^_\n]+__/.test(text);
+    }
+
+    function isDynamicPromptNode(node) {
+        const classType = (node && node.class_type) || '';
+        return dynamicPromptNodePatterns.some((pattern) => pattern.test(classType));
+    }
+
+    function joinPromptValues(values, emptyText) {
+        return Array.from(values).join('\n\n') || emptyText;
+    }
+
     function sanitizeJsonLikeString(text) {
         let sanitized = '';
         let inString = false;
@@ -145,9 +165,12 @@
 
                 sourceInputs.forEach((value) => {
                     if (typeof value === 'string' && value.trim()) {
-                        targetSource.add(value.trim());
-                        if (!hasPopulatedText) {
-                            targetRendered.add(value.trim());
+                        const sourceText = value.trim();
+                        const isTemplateOnlyNode = isDynamicPromptNode(linkNode) && isDynamicPromptTemplate(sourceText);
+
+                        targetSource.add(sourceText);
+                        if (!hasPopulatedText && !isTemplateOnlyNode) {
+                            targetRendered.add(sourceText);
                         }
                         foundText = true;
                     }
@@ -181,12 +204,18 @@
             rawData: JSON.stringify(workflowJson || promptJson, null, 2),
             promptData: {
                 positive: {
-                    rendered: Array.from(posRendered).join('\n\n') || 'No Positive Prompt Found',
-                    source: Array.from(posSource).join('\n\n') || 'No Source Prompt Found'
+                    rendered: joinPromptValues(
+                        posRendered,
+                        posSource.size ? 'Rendered prompt not available in metadata' : 'No Positive Prompt Found'
+                    ),
+                    source: joinPromptValues(posSource, 'No Source Prompt Found')
                 },
                 negative: {
-                    rendered: Array.from(negRendered).join('\n\n'),
-                    source: Array.from(negSource).join('\n\n')
+                    rendered: joinPromptValues(
+                        negRendered,
+                        negSource.size ? 'Rendered prompt not available in metadata' : ''
+                    ),
+                    source: joinPromptValues(negSource, '')
                 }
             },
             attributes: {

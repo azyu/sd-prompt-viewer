@@ -84,7 +84,7 @@ test('extracts positive prompt text from linked custom string nodes', () => {
                         seed: 773,
                         autorefresh: 'No'
                     },
-                    class_type: 'DPRandomGenerator'
+                    class_type: 'StringNode'
                 }
             })
         }
@@ -96,6 +96,97 @@ test('extracts positive prompt text from linked custom string nodes', () => {
     assert.equal(result.promptData.positive.source, 'template prompt from random generator');
     assert.equal(result.promptData.negative.rendered, 'negative prompt');
     assert.equal(result.attributes.model, 'novaAnimeXL_ilV170.safetensors');
+});
+
+test('does not pretend rendered prompt exists when metadata only stores a dynamic source template', () => {
+    const tags = {
+        prompt: {
+            description: JSON.stringify({
+                3: {
+                    inputs: {
+                        seed: 348776292763975,
+                        steps: 20,
+                        cfg: 6,
+                        sampler_name: 'euler',
+                        model: ['4', 0],
+                        positive: ['6', 0],
+                        negative: ['7', 0]
+                    },
+                    class_type: 'KSampler'
+                },
+                4: {
+                    inputs: { ckpt_name: 'novaAnimeXL_ilV170.safetensors' },
+                    class_type: 'CheckpointLoaderSimple'
+                },
+                6: {
+                    inputs: { text: ['27', 0], clip: ['4', 1] },
+                    class_type: 'CLIPTextEncode'
+                },
+                7: {
+                    inputs: { text: 'negative prompt', clip: ['4', 1] },
+                    class_type: 'CLIPTextEncode'
+                },
+                27: {
+                    inputs: {
+                        text: '1girl, {long|short} hair, __hair_color__',
+                        seed: 773,
+                        autorefresh: 'No'
+                    },
+                    class_type: 'DPRandomGenerator'
+                }
+            })
+        }
+    };
+
+    const result = parseComfyTags(tags);
+
+    assert.equal(result.promptData.positive.rendered, 'Rendered prompt not available in metadata');
+    assert.equal(result.promptData.positive.source, '1girl, {long|short} hair, __hair_color__');
+    assert.notEqual(result.promptData.positive.rendered, result.promptData.positive.source);
+});
+
+test('keeps rendered prompt text for non-dynamic nodes even when the text contains template-like tokens', () => {
+    const tags = {
+        prompt: {
+            description: JSON.stringify({
+                3: {
+                    inputs: {
+                        seed: 12,
+                        steps: 20,
+                        cfg: 6,
+                        sampler_name: 'euler',
+                        model: ['4', 0],
+                        positive: ['6', 0],
+                        negative: ['7', 0]
+                    },
+                    class_type: 'KSampler'
+                },
+                4: {
+                    inputs: { ckpt_name: 'model.safetensors' },
+                    class_type: 'CheckpointLoaderSimple'
+                },
+                6: {
+                    inputs: { text: ['27', 0], clip: ['4', 1] },
+                    class_type: 'CLIPTextEncode'
+                },
+                7: {
+                    inputs: { text: 'negative prompt', clip: ['4', 1] },
+                    class_type: 'CLIPTextEncode'
+                },
+                27: {
+                    inputs: {
+                        text: 'literal prompt with {a|b} and __tag__ tokens'
+                    },
+                    class_type: 'StringNode'
+                }
+            })
+        }
+    };
+
+    const result = parseComfyTags(tags);
+
+    assert.equal(result.promptData.positive.rendered, 'literal prompt with {a|b} and __tag__ tokens');
+    assert.equal(result.promptData.positive.source, 'literal prompt with {a|b} and __tag__ tokens');
 });
 
 test('ignores helper node text fields and continues to the linked prompt source', () => {

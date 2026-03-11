@@ -271,7 +271,7 @@ function resetUI() {
 }
 
 function handleComfyUI(tags) {
-    const result = window.comfyParser.parseComfyTags(tags);
+    const result = window.electronAPI.parseComfyTags(tags);
 
     rawDataArea.value = result.rawData;
     currentPromptData = result.promptData;
